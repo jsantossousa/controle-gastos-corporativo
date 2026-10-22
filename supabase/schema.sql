@@ -175,7 +175,8 @@ begin
     select * from (values
       ('erick.rates',     '723647', 'Erick Rates'),
       ('beatriz.batista', '473612', 'Beatriz Batista'),
-      ('alefe.franca',    '938430', 'Alefe França')
+      ('alefe.franca',    '938430', 'Alefe França'),
+      ('teste.teste',     '123456', 'Teste Teste')
     ) as t(username, password, display_name)
   loop
     v_email := v_user.username || '@' || v_domain;

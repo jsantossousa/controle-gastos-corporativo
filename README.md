@@ -22,6 +22,7 @@ Sistema corporativo e multi-usuário para gestão financeira pessoal/empresarial
 | `erick.rates` | `723647` | Primeiro acesso (solicita nova senha) |
 | `beatriz.batista` | `473612` | Primeiro acesso (solicita nova senha) |
 | `alefe.franca` | `938430` | Primeiro acesso (solicita nova senha) |
+| `teste.teste` | `123456` | Conta de teste e validação |
 
 > No primeiro acesso de cada usuário, o sistema solicita automaticamente a criação de uma nova senha pessoal.
 
