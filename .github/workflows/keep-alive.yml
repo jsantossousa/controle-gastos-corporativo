@@ -1,0 +1,39 @@
+name: Keep Supabase Alive (Ping Diário)
+
+on:
+  schedule:
+    # Executa diariamente às 08:00 UTC (~05:00 Horário de Brasília)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Permite disparo manual com 1 clique pela aba Actions do GitHub
+
+jobs:
+  ping:
+    name: Ping Supabase Database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enviar ping de atividade para o Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::SUPABASE_URL não encontrada nas variáveis/secrets do repositório."
+            exit 1
+          fi
+
+          echo "Disparando ping de atividade para: ${SUPABASE_URL}"
+
+          # Requisição ao endpoint PostgREST autenticado com anon key para registrar atividade no banco
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${SUPABASE_URL}/rest/v1/")
+
+          echo "Código de resposta HTTP: ${HTTP_STATUS}"
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 500 ]; then
+            echo "✓ Sucesso: Projeto Supabase ativo e impedido de entrar em suspensão (pausa de inatividade)."
+          else
+            echo "::warning::Resposta HTTP com erro ou inesperada: ${HTTP_STATUS}"
+            exit 1
+          fi
