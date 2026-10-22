@@ -33,7 +33,19 @@ export const App: React.FC = () => {
   const [monthKey, setMonthKey] = useState<string>(getCurrentMonthKey);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [expensesLoading, setExpensesLoading] = useState<boolean>(false);
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const saved = localStorage.getItem('cg_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+      return typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    } catch {
+      return 'light';
+    }
+  });
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -60,7 +72,12 @@ export const App: React.FC = () => {
     try {
       const prof = await fetchProfile(userId);
       setProfile(prof);
-      setTheme(prof.theme);
+      if (prof.theme) {
+        setTheme(prof.theme);
+        try {
+          localStorage.setItem('cg_theme', prof.theme);
+        } catch {}
+      }
       sound.setEnabled(prof.enableAudio);
     } catch (err) {
       console.error('Erro ao carregar perfil:', err);
@@ -134,6 +151,9 @@ export const App: React.FC = () => {
   const handleToggleTheme = async () => {
     const nextTheme: Theme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
+    try {
+      localStorage.setItem('cg_theme', nextTheme);
+    } catch {}
     if (session && profile) {
       setProfile({ ...profile, theme: nextTheme });
       await updateProfile(session.user.id, { theme: nextTheme }).catch(() => {});

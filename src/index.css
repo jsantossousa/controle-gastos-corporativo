@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --sat: env(safe-area-inset-top, 0px);
@@ -20,7 +22,7 @@
   padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 80px), 96px);
 }
 
-/* Shake animation for invalid PIN */
+/* Shake animation for invalid inputs */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   20%, 60% { transform: translateX(-8px); }
