@@ -21,19 +21,19 @@ jobs:
             exit 1
           fi
 
-          echo "Disparando ping de atividade para: ${SUPABASE_URL}"
+          echo "Disparando ping para o Supabase: ${SUPABASE_URL}"
 
-          # Requisição ao endpoint PostgREST autenticado com anon key para registrar atividade no banco
+          # Faz a requisição autenticada ao Supabase com a apikey para registrar atividade e evitar pausa por inatividade
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${SUPABASE_URL}/rest/v1/")
+            "${SUPABASE_URL}/auth/v1/health")
 
           echo "Código de resposta HTTP: ${HTTP_STATUS}"
 
-          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 500 ]; then
-            echo "✓ Sucesso: Projeto Supabase ativo e impedido de entrar em suspensão (pausa de inatividade)."
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✓ Sucesso (HTTP 200): Projeto Supabase ativo e impedido de entrar em pausa/suspensão."
           else
-            echo "::warning::Resposta HTTP com erro ou inesperada: ${HTTP_STATUS}"
+            echo "::error::Falha no ping. Código HTTP retornado: ${HTTP_STATUS}"
             exit 1
           fi
