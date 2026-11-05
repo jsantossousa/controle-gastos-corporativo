@@ -1,39 +1,126 @@
-name: Keep Supabase Alive (Ping Diário)
+name: Keep Supabase Alive (Simulação de Atividade Real)
 
 on:
   schedule:
     # Executa diariamente às 08:00 UTC (~05:00 Horário de Brasília)
     - cron: '0 8 * * *'
-  workflow_dispatch: # Permite disparo manual com 1 clique pela aba Actions do GitHub
+  workflow_dispatch: # Permite disparo manual a qualquer momento pelo GitHub Actions
 
 jobs:
-  ping:
-    name: Ping Supabase Database
+  keepalive:
+    name: Simular Atividade de Usuário no PostgreSQL
     runs-on: ubuntu-latest
     steps:
-      - name: Enviar ping de atividade para o Supabase
+      - name: Executar escrita e exclusão real no PostgreSQL via Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
+          PING_USER: ${{ secrets.PING_USER || vars.PING_USER || 'teste.teste' }}
+          PING_PASSWORD: ${{ secrets.PING_PASSWORD || vars.PING_PASSWORD || '123456' }}
         run: |
-          if [ -z "$SUPABASE_URL" ]; then
-            echo "::error::SUPABASE_URL não encontrada nas variáveis/secrets do repositório."
+          set -e
+
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL ou SUPABASE_ANON_KEY não configuradas."
             exit 1
           fi
 
-          echo "Disparando ping para o Supabase: ${SUPABASE_URL}"
+          echo "=========================================================="
+          echo "1. AUTENTICANDO USUÁRIO DE TESTE (${PING_USER})..."
+          echo "=========================================================="
 
-          # Faz a requisição autenticada ao Supabase com a apikey para registrar atividade e evitar pausa por inatividade
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          LOGIN_PAYLOAD=$(jq -n \
+            --arg email "${PING_USER}@corp.example.com" \
+            --arg password "${PING_PASSWORD}" \
+            '{email: $email, password: $password}')
+
+          LOGIN_RES=$(curl -s -w "\n%{http_code}" -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${SUPABASE_URL}/auth/v1/health")
+            -H "Content-Type: application/json" \
+            -d "$LOGIN_PAYLOAD")
 
-          echo "Código de resposta HTTP: ${HTTP_STATUS}"
+          HTTP_STATUS=$(echo "$LOGIN_RES" | tail -n1)
+          BODY=$(echo "$LOGIN_RES" | sed '$d')
 
-          if [ "$HTTP_STATUS" -eq 200 ]; then
-            echo "✓ Sucesso (HTTP 200): Projeto Supabase ativo e impedido de entrar em pausa/suspensão."
-          else
-            echo "::error::Falha no ping. Código HTTP retornado: ${HTTP_STATUS}"
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "::error::Falha ao autenticar como ${PING_USER} (HTTP ${HTTP_STATUS})."
+            echo "Resposta do Supabase Auth: ${BODY}"
+            echo ""
+            echo "DICA: Certifique-se de que o usuário '${PING_USER}' foi criado e confirmado no Supabase."
             exit 1
           fi
+
+          TOKEN=$(echo "$BODY" | jq -r .access_token)
+          USER_ID=$(echo "$BODY" | jq -r .user.id)
+          echo "✓ Autenticado com sucesso como ${PING_USER} (UUID: ${USER_ID})"
+
+          echo ""
+          echo "=========================================================="
+          echo "2. LIMPANDO REGISTROS ANTERIORES DE PING (SE HOUVER)..."
+          echo "=========================================================="
+
+          curl -s -X DELETE "${SUPABASE_URL}/rest/v1/expenses?description=eq.keepalive-ping" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" > /dev/null || true
+          echo "✓ Limpeza prévia concluída."
+
+          echo ""
+          echo "=========================================================="
+          echo "3. INSERINDO REGISTRO REAL NO POSTGRESQL..."
+          echo "=========================================================="
+
+          TODAY=$(date +%Y-%m-%d)
+          INSERT_PAYLOAD=$(jq -n \
+            --arg date "$TODAY" \
+            '{amount: 0.01, description: "keepalive-ping", category: "outro", spent_on: $date}')
+
+          INSERT_RES=$(curl -s -w "\n%{http_code}" -X POST "${SUPABASE_URL}/rest/v1/expenses" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            -d "$INSERT_PAYLOAD")
+
+          INSERT_STATUS=$(echo "$INSERT_RES" | tail -n1)
+          INSERT_BODY=$(echo "$INSERT_RES" | sed '$d')
+
+          if [ "$INSERT_STATUS" -lt 200 ] || [ "$INSERT_STATUS" -ge 300 ]; then
+            echo "::error::Falha ao inserir registro no PostgreSQL (HTTP ${INSERT_STATUS})."
+            echo "Resposta do PostgREST: ${INSERT_BODY}"
+            exit 1
+          fi
+
+          EXP_ID=$(echo "$INSERT_BODY" | jq -r '.[0].id // empty')
+          if [ -z "$EXP_ID" ]; then
+            echo "::error::Gasto não retornou ID gerado."
+            exit 1
+          fi
+
+          echo "✓ Registro de simulação gravado com sucesso no PostgreSQL! (ID: ${EXP_ID})"
+
+          echo ""
+          echo "=========================================================="
+          echo "4. EXCLUINDO REGISTRO DE SIMULAÇÃO..."
+          echo "=========================================================="
+
+          DEL_RES=$(curl -s -w "\n%{http_code}" -X DELETE "${SUPABASE_URL}/rest/v1/expenses?id=eq.${EXP_ID}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Prefer: return=representation")
+
+          DEL_STATUS=$(echo "$DEL_RES" | tail -n1)
+          DEL_BODY=$(echo "$DEL_RES" | sed '$d')
+
+          if [ "$DEL_STATUS" -lt 200 ] || [ "$DEL_STATUS" -ge 300 ]; then
+            echo "::error::Falha ao excluir registro do PostgreSQL (HTTP ${DEL_STATUS})."
+            echo "Resposta do PostgREST: ${DEL_BODY}"
+            exit 1
+          fi
+
+          echo "✓ Registro (${EXP_ID}) excluído com sucesso do PostgreSQL."
+          echo ""
+          echo "=========================================================="
+          echo "✓ CONCLUÍDO: Atividade real gravada e desfeita no banco de dados."
+          echo "  O projeto Supabase foi notificado com I/O de escrita/deleção"
+          echo "  e o banco permanece 100% limpo, sem alterar dados sensíveis."
+          echo "=========================================================="

@@ -182,6 +182,15 @@ begin
     v_email := v_user.username || '@' || v_domain;
 
     if exists (select 1 from auth.users where email = v_email) then
+      update auth.users
+      set email_confirmed_at = coalesce(email_confirmed_at, now()),
+          updated_at = now()
+      where email = v_email;
+      if v_user.username = 'teste.teste' then
+        update public.profiles
+        set must_change_password = false
+        where username = 'teste.teste';
+      end if;
       continue;
     end if;
 
